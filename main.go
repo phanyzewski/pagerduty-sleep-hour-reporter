@@ -11,13 +11,12 @@ import (
 )
 
 //
-//
 // Since:     "2021-08-01T00:00:00-05:00",
 // Until:     "2022-01-01T00:00:00-05:00",
 //
 // Total Pages for all teams: 607
-// Total Sleep Hour Alerts for all teams: map[August:19 December:7 November:5 October:13 September:13]
-// Total Off Hour Alerts for all teams: map[August:5 December:2 November:2 October:7 September:6]
+// Total Sleep Hour Alerts for all teams: map[August:26 December:11 November:7 October:15 September:13]
+// Total Off Hour Alerts for all teams: map[December:8 October:4 September:3]
 
 // Since:     "2022-01-01T00:00:00-05:00",
 // Until:     "2022-07-01T00:00:00-05:00",
@@ -26,12 +25,15 @@ import (
 // Total Sleep Hour Alerts for all teams: map[April:15 February:11 January:8 June:13 March:15 May:27]
 // Total Off Hour Alerts for all teams: map[April:2 February:1 January:2 June:6 March:4 May:8]
 
-// Since:     "2022-07-01T00:00:00-05:00",
-// Until:     "2022-09-01T00:00:00-05:00",
-//
-// Total Pages for all teams: 121
-// Total Sleep Hour Alerts for all teams: map[August:4 July:2]
-// Total Off Hour Alerts for all teams: map[August:2]
+// june 2022
+// Total Pages for all teams: 86
+// Total Sleep Hour Alerts for all teams: map[June:27]
+// Total Off Hour Alerts for all teams: map[June:15]
+
+// july 2022
+// Total Pages for all teams: 47
+// Total Sleep Hour Alerts for all teams: map[July:2]
+// Total Off Hour Alerts for all teams: map[]
 var client *pagerduty.Client
 
 func main() {
@@ -59,8 +61,8 @@ func listIncidentResponse(offset int) (*pagerduty.ListIncidentsResponse, error) 
 	resp, err := client.ListIncidentsWithContext(ctx, pagerduty.ListIncidentsOptions{
 		Limit:     100,
 		Offset:    uint(offset),
-		Since:     "2022-01-01T00:00:00-05:00",
-		Until:     "2022-07-01T00:00:00-05:00",
+		Since:     "2021-08-01T00:00:00-05:00",
+		Until:     "2022-01-01T00:00:00-05:00",
 		Urgencies: []string{"high"},
 		// dev on-call https://teamsnap.pagerduty.com/teams/PTBNXW0/users
 		// infra on-call https://teamsnap.pagerduty.com/teams/PTV792K/users
@@ -72,26 +74,38 @@ func listIncidentResponse(offset int) (*pagerduty.ListIncidentsResponse, error) 
 	return resp, err
 }
 
-// func incidentLog(id string) {
-// 	i, err := client.ListIncidentLogEntriesWithContext(context.Background(), id, pagerduty.ListIncidentLogEntriesOptions{})
-// 	var aerr pagerduty.APIError
+// for incidents resolved by an api integration, get paged humans
+func incidentResponders(id string) []string {
+	i, err := client.ListIncidentLogEntriesWithContext(context.Background(), id, pagerduty.ListIncidentLogEntriesOptions{})
+	var aerr pagerduty.APIError
 
-// 	// handle api errors
-// 	if errors.As(err, &aerr) {
-// 		if aerr.RateLimited() {
-// 			fmt.Println("rate limited")
-// 			os.Exit(1)
-// 		}
+	// handle api errors
+	if errors.As(err, &aerr) {
+		if aerr.RateLimited() {
+			fmt.Println("rate limited")
+			os.Exit(1)
+		}
 
-// 		fmt.Println("unknown status code:", aerr.StatusCode)
-// 		os.Exit(1)
-// 	}
+		fmt.Println("unknown status code:", aerr.StatusCode)
+		os.Exit(1)
+	}
 
-// 	for _, v := range i.LogEntries {
+	users := map[string]bool{}
+	for _, v := range i.LogEntries {
+		if v.User.ID != "" {
+			if _, ok := users[v.User.ID]; !ok {
+				users[v.User.ID] = true
+			}
+		}
+	}
 
-// 		fmt.Printf("log: %+v\n", v)
-// 	}
-// }
+	ids := []string{}
+	for k, _ := range users {
+		ids = append(ids, k)
+	}
+
+	return ids
+}
 
 func listIncidents() {
 	offset := 0
@@ -125,23 +139,17 @@ func listIncidents() {
 		offset += 100
 	}
 
-	bots := []string{"Platform Datadog Alerts", "Datadog Ops", "Ops Low Priority Alerts", "AWS", "Ghost Inspector Payments", "Hoyle", "SNAPI"}
 	offHourAlerts := map[string]int{}
 	sleepHourAlerts := map[string]int{}
 	alertsForMonth := map[string]int{}
 	sleepPeople := map[string]int{}
-	dupe := 0
 	dedupe := map[string]bool{}
 	for _, i := range incidents {
 		tz, ok := getUserTimeZone(i.LastStatusChangeBy.ID)
+		// assign a default timezone for API integrations, bots and unregistered users
 		if !ok {
-			for _, v := range bots {
-				if i.LastStatusChangeBy.Summary == v {
-					// fmt.Printf("No time zone for bot: %s, using America/Denver\n", i.LastStatusChangeBy.Summary)
-					tz = "America/Denver"
-					break
-				}
-			}
+			// fmt.Printf("No time zone for bot: %s, using America/Denver\n", i.LastStatusChangeBy.Summary)
+			tz = "America/Denver"
 		}
 
 		userZone, err := time.LoadLocation(tz)
@@ -158,57 +166,51 @@ func listIncidents() {
 
 		t := utc.In(userZone)
 		if yes := sleepHours(t); yes {
-			// dedupe incidents that happen on the same day/hour/minute for a single responder
+			// dedupe incidents that happen on the same day/hour for a single incident
 			dupeKey := fmt.Sprintf("%v%v%v", i.LastStatusChangeBy.ID, t.YearDay(), t.Hour())
-			// dupeKey := fmt.Sprintf("KEY: %v", i.IncidentKey)
 			if _, ok := dedupe[dupeKey]; !ok {
 				dedupe[dupeKey] = true
 				_, week := t.ISOWeek()
-				key := fmt.Sprintf("%v%v", i.LastStatusChangeBy.ID, week)
-				sleepPeople[key] += 1
 
-				if sleepPeople[key] > 1 {
-					name, _ := getUserName(i.LastStatusChangeBy.ID)
-					fmt.Printf("ALERT %s sleep interruption SLO violation for week: %v Number of interruptions: %v\n", name, week, sleepPeople[key])
-				} else {
-					fmt.Printf("sleep interruption: %v \n", i.Summary)
+				ids := incidentResponders(i.ID)
+				for _, v := range ids {
+					if !isService(v) {
+						name, _ := getUserName(v)
+
+						key := fmt.Sprintf("%v%v", name, week)
+						sleepPeople[key] += 1
+						fmt.Println()
+						fmt.Println("page time: ", t)
+						fmt.Printf("sleep interruption: %s %v \n", name, i.Summary)
+
+						// debug
+						// fmt.Println()
+						// fmt.Println("Parsed time: ", t)
+						// fmt.Printf("Initial Responder: %v\n", i.FirstTriggerLogEntry)
+						// fmt.Printf("Final Responder: %v\n", i.LastStatusChangeBy.Summary)
+						// fmt.Printf("Incident ID: %v\n", i.ID)
+						// fmt.Printf("Sleeping Hour Alert Detected!: %s\n", i.Description)
+
+						if sleepPeople[key] > 1 {
+							fmt.Printf("%s: Sleep interruption SLO violation week: %v Number of interruptions: %v\n", name, week, sleepPeople[key])
+						}
+
+						sleepHourAlerts[t.Month().String()] += 1
+					}
 				}
-			} else {
-				// fmt.Printf("DUPE: %s, YearDay: %v Hour: %v Minute: %v \n", dupeKey, t.YearDay(), t.Hour(), t.Minute())
-				dupe += 1
-				continue
-
 			}
-
-			// debug
-			// fmt.Println()
-			// fmt.Println("Parsed time: ", t)
-			// fmt.Printf("Initial Responder: %v\n", i.FirstTriggerLogEntry)
-			// fmt.Printf("Final Responder: %v\n", i.LastStatusChangeBy.Summary)
-			// fmt.Printf("Incident ID: %v\n", i.ID)
-			// fmt.Printf("Sleeping Hour Alert Detected!: %s\n", i.Description)
-
-			sleepHourAlerts[t.Month().String()] += 1
-		}
-
-		if no := businessHours(t); no {
+		} else if no := businessHours(t); no {
 			dupeKey := fmt.Sprintf("%v%v%v", i.LastStatusChangeBy.ID, t.YearDay(), t.Hour())
-			// dupeKey := fmt.Sprintf("KEY: %v", i.IncidentKey)
 			if _, ok := dedupe[dupeKey]; !ok {
 				dedupe[dupeKey] = true
-			} else {
-				// fmt.Printf("DUPE: %s, YearDay: %v Hour: %v Minute: %v \n", dupeKey, t.YearDay(), t.Hour(), t.Minute())
-				dupe += 1
-				continue
 			}
 
-			// fmt.Println()
-			// fmt.Println("Parsed time: ", t)
-			// fmt.Printf("Responder: %v\n", i.LastStatusChangeBy.Summary)
-			// fmt.Printf("Incident ID: %v\n", i.ID)
-			// fmt.Printf("Off Hour Alert Detected!: %s\n", i.Description)
-
-			offHourAlerts[t.Month().String()] += 1
+			ids := incidentResponders(i.ID)
+			for _, v := range ids {
+				if !isService(v) {
+					offHourAlerts[t.Month().String()] += 1
+				}
+			}
 		}
 
 		alertsForMonth[t.Month().String()] += 1
@@ -257,7 +259,7 @@ func getUserName(id string) (string, string) {
 		}
 
 		if aerr.NotFound() {
-			return "disabled-user", ""
+			return "unknown", ""
 		} else {
 			fmt.Println("unknown status code when getting username:", aerr.StatusCode)
 			os.Exit(1)
@@ -265,6 +267,29 @@ func getUserName(id string) (string, string) {
 	}
 
 	return resp.Name, resp.Email
+}
+
+func isService(id string) bool {
+	ctx := context.Background()
+	_, err := client.GetServiceWithContext(ctx, id, &pagerduty.GetServiceOptions{})
+
+	var aerr pagerduty.APIError
+
+	if errors.As(err, &aerr) {
+		if aerr.RateLimited() {
+			fmt.Println("rate limited")
+			os.Exit(1)
+		}
+
+		if aerr.NotFound() {
+			return false
+		} else {
+			fmt.Println("unknown status code when getting username:", aerr.StatusCode)
+			os.Exit(1)
+		}
+	}
+
+	return true
 }
 
 func sleepHours(dt time.Time) bool {
