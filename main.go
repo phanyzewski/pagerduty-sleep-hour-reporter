@@ -10,6 +10,28 @@ import (
 	"github.com/PagerDuty/go-pagerduty"
 )
 
+//
+//
+// Since:     "2021-08-01T00:00:00-05:00",
+// Until:     "2022-01-01T00:00:00-05:00",
+//
+// Total Pages for all teams: 607
+// Total Sleep Hour Alerts for all teams: map[August:19 December:7 November:5 October:13 September:13]
+// Total Off Hour Alerts for all teams: map[August:5 December:2 November:2 October:7 September:6]
+
+// Since:     "2022-01-01T00:00:00-05:00",
+// Until:     "2022-07-01T00:00:00-05:00",
+//
+// Total Pages for all teams: 683
+// Total Sleep Hour Alerts for all teams: map[April:15 February:11 January:8 June:13 March:15 May:27]
+// Total Off Hour Alerts for all teams: map[April:2 February:1 January:2 June:6 March:4 May:8]
+
+// Since:     "2022-07-01T00:00:00-05:00",
+// Until:     "2022-09-01T00:00:00-05:00",
+//
+// Total Pages for all teams: 121
+// Total Sleep Hour Alerts for all teams: map[August:4 July:2]
+// Total Off Hour Alerts for all teams: map[August:2]
 var client *pagerduty.Client
 
 func main() {
@@ -21,7 +43,6 @@ func main() {
 	}
 	client = pagerduty.NewClient(token)
 
-	// offHourReport()
 	listIncidents()
 }
 
@@ -50,6 +71,27 @@ func listIncidentResponse(offset int) (*pagerduty.ListIncidentsResponse, error) 
 
 	return resp, err
 }
+
+// func incidentLog(id string) {
+// 	i, err := client.ListIncidentLogEntriesWithContext(context.Background(), id, pagerduty.ListIncidentLogEntriesOptions{})
+// 	var aerr pagerduty.APIError
+
+// 	// handle api errors
+// 	if errors.As(err, &aerr) {
+// 		if aerr.RateLimited() {
+// 			fmt.Println("rate limited")
+// 			os.Exit(1)
+// 		}
+
+// 		fmt.Println("unknown status code:", aerr.StatusCode)
+// 		os.Exit(1)
+// 	}
+
+// 	for _, v := range i.LogEntries {
+
+// 		fmt.Printf("log: %+v\n", v)
+// 	}
+// }
 
 func listIncidents() {
 	offset := 0
@@ -83,9 +125,9 @@ func listIncidents() {
 		offset += 100
 	}
 
+	bots := []string{"Platform Datadog Alerts", "Datadog Ops", "Ops Low Priority Alerts", "AWS", "Ghost Inspector Payments", "Hoyle", "SNAPI"}
+	offHourAlerts := map[string]int{}
 	sleepHourAlerts := map[string]int{}
-	devSleepHourAlerts := map[string]int{}
-	infraSleepHourAlerts := map[string]int{}
 	alertsForMonth := map[string]int{}
 	sleepPeople := map[string]int{}
 	dupe := 0
@@ -93,8 +135,13 @@ func listIncidents() {
 	for _, i := range incidents {
 		tz, ok := getUserTimeZone(i.LastStatusChangeBy.ID)
 		if !ok {
-			// fmt.Printf("No time zone found, likely a service responder not a user: %v\n", i.LastStatusChangeBy.Summary)
-			continue
+			for _, v := range bots {
+				if i.LastStatusChangeBy.Summary == v {
+					// fmt.Printf("No time zone for bot: %s, using America/Denver\n", i.LastStatusChangeBy.Summary)
+					tz = "America/Denver"
+					break
+				}
+			}
 		}
 
 		userZone, err := time.LoadLocation(tz)
@@ -103,12 +150,13 @@ func listIncidents() {
 			os.Exit(1)
 		}
 
-		var t time.Time
-		if t, err = time.ParseInLocation(time.RFC3339, i.CreatedAt, userZone); err != nil {
+		var utc time.Time
+		if utc, err = time.Parse(time.RFC3339, i.CreatedAt); err != nil {
 			fmt.Printf("bad parse: %s\n", err)
 			os.Exit(1)
 		}
 
+		t := utc.In(userZone)
 		if yes := sleepHours(t); yes {
 			// dedupe incidents that happen on the same day/hour/minute for a single responder
 			dupeKey := fmt.Sprintf("%v%v%v", i.LastStatusChangeBy.ID, t.YearDay(), t.Hour())
@@ -122,6 +170,8 @@ func listIncidents() {
 				if sleepPeople[key] > 1 {
 					name, _ := getUserName(i.LastStatusChangeBy.ID)
 					fmt.Printf("ALERT %s sleep interruption SLO violation for week: %v Number of interruptions: %v\n", name, week, sleepPeople[key])
+				} else {
+					fmt.Printf("sleep interruption: %v \n", i.Summary)
 				}
 			} else {
 				// fmt.Printf("DUPE: %s, YearDay: %v Hour: %v Minute: %v \n", dupeKey, t.YearDay(), t.Hour(), t.Minute())
@@ -130,37 +180,45 @@ func listIncidents() {
 
 			}
 
-			// fmt.Printf("Time in responders zone: %v\n", t.Hour())
-			// fmt.Printf("Responder: %v\n", i.LastStatusChangeBy.Summary)
+			// debug
+			// fmt.Println()
+			// fmt.Println("Parsed time: ", t)
+			// fmt.Printf("Initial Responder: %v\n", i.FirstTriggerLogEntry)
+			// fmt.Printf("Final Responder: %v\n", i.LastStatusChangeBy.Summary)
 			// fmt.Printf("Incident ID: %v\n", i.ID)
 			// fmt.Printf("Sleeping Hour Alert Detected!: %s\n", i.Description)
 
-			for _, v := range i.Teams {
-				// infra on-call https://teamsnap.pagerduty.com/teams/PTV792K/users
-				if v.ID == "PTV792K" {
-					infraSleepHourAlerts[t.Month().String()] += 1
-				}
-				// dev on-call https://teamsnap.pagerduty.com/teams/PTBNXW0/users
-				if v.ID == "PTBNXW0" {
-					devSleepHourAlerts[t.Month().String()] += 1
-				}
+			sleepHourAlerts[t.Month().String()] += 1
+		}
+
+		if no := businessHours(t); no {
+			dupeKey := fmt.Sprintf("%v%v%v", i.LastStatusChangeBy.ID, t.YearDay(), t.Hour())
+			// dupeKey := fmt.Sprintf("KEY: %v", i.IncidentKey)
+			if _, ok := dedupe[dupeKey]; !ok {
+				dedupe[dupeKey] = true
+			} else {
+				// fmt.Printf("DUPE: %s, YearDay: %v Hour: %v Minute: %v \n", dupeKey, t.YearDay(), t.Hour(), t.Minute())
+				dupe += 1
+				continue
 			}
 
-			sleepHourAlerts[t.Month().String()] += 1
+			// fmt.Println()
+			// fmt.Println("Parsed time: ", t)
+			// fmt.Printf("Responder: %v\n", i.LastStatusChangeBy.Summary)
+			// fmt.Printf("Incident ID: %v\n", i.ID)
+			// fmt.Printf("Off Hour Alert Detected!: %s\n", i.Description)
+
+			offHourAlerts[t.Month().String()] += 1
 		}
 
 		alertsForMonth[t.Month().String()] += 1
 	}
 
-	// fmt.Printf("Total Off Hour Alerts for all teams: %v\n", offHourAlerts)
-
 	fmt.Printf("Total Pages for all teams: %v\n", len(incidents))
 	fmt.Printf("Total Sleep Hour Alerts for all teams: %v\n", sleepHourAlerts)
-	fmt.Printf("Total Sleep Hour Alerts for infra: %v\n", infraSleepHourAlerts)
-	fmt.Printf("Total Sleep Hour Alerts for dev: %v\n", devSleepHourAlerts)
-
-	fmt.Println("dupes: ", dupe)
-	// fmt.Printf("Total Business Hour Alerts for all teams: %v\n", businessHourAlerts)
+	fmt.Printf("Total Off Hour Alerts for all teams: %v\n", offHourAlerts)
+	// fmt.Printf("Total Sleep Hour Alerts for infra: %v\n", infraSleepHourAlerts)
+	// fmt.Printf("Total Sleep Hour Alerts for dev: %v\n", devSleepHourAlerts)
 }
 
 func getUserTimeZone(id string) (string, bool) {
@@ -176,15 +234,12 @@ func getUserTimeZone(id string) (string, bool) {
 		}
 
 		if aerr.NotFound() {
-			// fmt.Printf("cannot find timezone for %s\n", id)
 			return "", false
 		} else {
 			fmt.Println("unknown status code getting user time zone:", aerr.StatusCode)
 			os.Exit(1)
 		}
 	}
-
-	// fmt.Printf("timezone: %s\n", resp.Timezone)
 
 	return resp.Timezone, true
 }
@@ -202,15 +257,12 @@ func getUserName(id string) (string, string) {
 		}
 
 		if aerr.NotFound() {
-			// fmt.Printf("cannot find timezone for %s\n", id)
 			return "disabled-user", ""
 		} else {
 			fmt.Println("unknown status code when getting username:", aerr.StatusCode)
 			os.Exit(1)
 		}
 	}
-
-	// fmt.Printf("timezone: %s\n", resp.Timezone)
 
 	return resp.Name, resp.Email
 }
@@ -226,83 +278,19 @@ func sleepHours(dt time.Time) bool {
 	return false
 }
 
-// func offHourReport() {
-// 	// https://developer.pagerduty.com/api-reference/c2d493e995071-get-raw-data-multiple-incidents
-// 	// 	{
-// 	//   "filters": {
-// 	//     "created_at_start": "2021-01-01T00:00:00-05:00",
-// 	//     "created_at_end": "2021-01-31T00:00:00-05:00",
-// 	//     "urgency": "high",
-// 	//     "major": true,
-// 	//     "team_ids": [
-// 	//       "PGVXG6U",
-// 	//       "PNVU4U4"
-// 	//     ],
-// 	//     "service_ids": [
-// 	//       "PQVUB8D",
-// 	//       "PU2D9X3"
-// 	//     ],
-// 	//     "priority_names": [
-// 	//       "P1",
-// 	//       "P2"
-// 	//     ]
-// 	//   },
-// 	//   "limit": 20,
-// 	//   "order": "desc",
-// 	//   "order_by": "created_at",
-// 	//   "time_zone": "Etc/UTC"
-// 	// }
+func businessHours(dt time.Time) bool {
+	// - Business Hours: 8am-6pm Mon-Fri, based on the user’s time zone.
+	bod := 8
+	eod := 19
+	// check day of week
+	if dt.Weekday() == time.Saturday || dt.Weekday() == time.Sunday {
+		return false
+	}
 
-// 	ctx := context.Background()
-// 	// resp, err := client.GetAggregatedServiceData(ctx, pagerduty.AnalyticsRequest{
-// 	resp, err := client.GetAggregatedTeamData(ctx, pagerduty.AnalyticsRequest{
-// 		Filters: &pagerduty.AnalyticsFilter{
-// 			CreatedAtStart: "2022-06-01T00:00:00-05:00",
-// 			CreatedAtEnd:   "2022-07-01T00:00:00-05:00",
-// 			Urgency:        "high",
-// 			// Major:          false,
-// 			// dev on-call https://teamsnap.pagerduty.com/teams/PTBNXW0/users
-// 			// infra on-call https://teamsnap.pagerduty.com/teams/PTV792K/users
-// 			TeamIDs: []string{"PTV792K", "PTBNXW0"},
-// 			// ServiceIDs: []string{"P6YWFZ0"},
-// 		},
-// 		TimeZone: "MST",
-// 	})
+	// check hour of day
+	if dt.Hour() >= bod && eod < dt.Hour() {
+		return true
+	}
 
-// 	// resp, err := client.Listin
-
-// 	var aerr pagerduty.APIError
-
-// 	if errors.As(err, &aerr) {
-// 		if aerr.RateLimited() {
-// 			fmt.Println("rate limited")
-// 			os.Exit(1)
-// 		}
-
-// 		fmt.Println("unknown status code:", aerr.StatusCode)
-
-// 		os.Exit(1)
-// 	}
-
-// 	incidentCount := 0
-// 	offHourAlerts := 0
-// 	sleepHourAlerts := 0
-// 	businessHourAlerts := 0
-// 	for _, d := range resp.Data {
-// 		fmt.Printf("%+v\n", d)
-
-// 		fmt.Printf("Off Hour Alerts: %v\n", d.TotalOffHourInterruptions)
-// 		fmt.Printf("Sleep Hour Alerts: %v\n", d.TotalSleepHourInterruptions)
-// 		fmt.Printf("Business Hour Alerts: %v\n", d.TotalBusinessHourInterruptions)
-// 		fmt.Printf("Incident Count: %v\n", d.TotalIncidentCount)
-// 		offHourAlerts += d.TotalOffHourInterruptions
-// 		sleepHourAlerts += d.TotalSleepHourInterruptions
-// 		incidentCount += d.TotalIncidentCount
-// 		businessHourAlerts += d.TotalBusinessHourInterruptions
-// 	}
-
-// 	fmt.Printf("Total Pages for all teams: %v\n", incidentCount)
-// 	fmt.Printf("Total Off Hour Alerts for all teams: %v\n", offHourAlerts)
-// 	fmt.Printf("Total Sleep Hour Alerts for all teams: %v\n", sleepHourAlerts)
-// 	fmt.Printf("Total Business Hour Alerts for all teams: %v\n", businessHourAlerts)
-// }
+	return false
+}
