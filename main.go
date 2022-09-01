@@ -10,30 +10,15 @@ import (
 	"github.com/PagerDuty/go-pagerduty"
 )
 
-//
-// Since:     "2021-08-01T00:00:00-05:00",
-// Until:     "2022-01-01T00:00:00-05:00",
-//
-// Total Pages for all teams: 607
-// Total Sleep Hour Alerts for all teams: map[August:26 December:11 November:7 October:15 September:13]
-// Total Off Hour Alerts for all teams: map[December:8 October:4 September:3]
-
-// Since:     "2022-01-01T00:00:00-05:00",
-// Until:     "2022-07-01T00:00:00-05:00",
-//
-// Total Pages for all teams: 683
-// Total Sleep Hour Alerts for all teams: map[April:15 February:11 January:8 June:13 March:15 May:27]
-// Total Off Hour Alerts for all teams: map[April:2 February:1 January:2 June:6 March:4 May:8]
-
-// june 2022
+// June 2022
 // Total Pages for all teams: 86
-// Total Sleep Hour Alerts for all teams: map[June:27]
-// Total Off Hour Alerts for all teams: map[June:15]
+// Total Sleep Hour Alerts for all teams: map[June:17]
+// Total Off Hour Alerts for all teams: map[June:12]
 
 // july 2022
 // Total Pages for all teams: 47
 // Total Sleep Hour Alerts for all teams: map[July:2]
-// Total Off Hour Alerts for all teams: map[]
+// Total Off Hour Alerts for all teams: map[July:3]
 var client *pagerduty.Client
 
 func main() {
@@ -61,8 +46,8 @@ func listIncidentResponse(offset int) (*pagerduty.ListIncidentsResponse, error) 
 	resp, err := client.ListIncidentsWithContext(ctx, pagerduty.ListIncidentsOptions{
 		Limit:     100,
 		Offset:    uint(offset),
-		Since:     "2021-08-01T00:00:00-05:00",
-		Until:     "2022-01-01T00:00:00-05:00",
+		Since:     "2020-01-01T00:00:00-05:00",
+		Until:     "2020-04-01T00:00:00-05:00",
 		Urgencies: []string{"high"},
 		// dev on-call https://teamsnap.pagerduty.com/teams/PTBNXW0/users
 		// infra on-call https://teamsnap.pagerduty.com/teams/PTV792K/users
@@ -76,7 +61,14 @@ func listIncidentResponse(offset int) (*pagerduty.ListIncidentsResponse, error) 
 
 // for incidents resolved by an api integration, get paged humans
 func incidentResponders(id string) []string {
-	i, err := client.ListIncidentLogEntriesWithContext(context.Background(), id, pagerduty.ListIncidentLogEntriesOptions{})
+	blockList := []string{"PCNS2G8", "PHGM5IU", "P0MFEHL"}
+	for _, v := range blockList {
+		if id == v {
+			return []string{}
+		}
+	}
+
+	i, err := client.ListIncidentLogEntriesWithContext(context.Background(), id, pagerduty.ListIncidentLogEntriesOptions{Limit: 100, Offset: 0, Total: true})
 	var aerr pagerduty.APIError
 
 	// handle api errors
@@ -86,8 +78,18 @@ func incidentResponders(id string) []string {
 			os.Exit(1)
 		}
 
-		fmt.Println("unknown status code:", aerr.StatusCode)
-		os.Exit(1)
+		if aerr.NotFound() {
+			fmt.Printf("missing log entries for: %s\n", id)
+		} else {
+			fmt.Printf("unknown status code ListIncidentLogEntriesWithContext: %v, %v\n", id, aerr.StatusCode)
+			// os.Exit(1)
+			return []string{}
+		}
+	}
+
+	if i.Total > 100 {
+		fmt.Println("warn, more than 100 log entries for incident", id)
+		fmt.Println("count: ", i.Total)
 	}
 
 	users := map[string]bool{}
@@ -141,46 +143,52 @@ func listIncidents() {
 
 	offHourAlerts := map[string]int{}
 	sleepHourAlerts := map[string]int{}
-	alertsForMonth := map[string]int{}
+	// alertsForMonth := map[string]int{}
 	sleepPeople := map[string]int{}
 	dedupe := map[string]bool{}
 	for _, i := range incidents {
-		tz, ok := getUserTimeZone(i.LastStatusChangeBy.ID)
+		// tz, ok := getUserTimeZone(i.LastStatusChangeBy.ID)
 		// assign a default timezone for API integrations, bots and unregistered users
-		if !ok {
-			// fmt.Printf("No time zone for bot: %s, using America/Denver\n", i.LastStatusChangeBy.Summary)
-			tz = "America/Denver"
+
+		ids := incidentResponders(i.ID)
+		if len(ids) < 1 {
+			ids = []string{i.LastStatusChangeBy.ID}
 		}
 
-		userZone, err := time.LoadLocation(tz)
-		if err != nil {
-			fmt.Println(err)
-			os.Exit(1)
-		}
+		for _, v := range ids {
+			if !isService(v) {
+				name := getUserName(v)
+				// fmt.Println("responder: ", name)
+				tz, ok := getUserTimeZone(v)
+				if !ok {
+					// fmt.Printf("No time zone for bot: %s, using America/Denver\n", name)
+					tz = "America/Denver"
+				}
 
-		var utc time.Time
-		if utc, err = time.Parse(time.RFC3339, i.CreatedAt); err != nil {
-			fmt.Printf("bad parse: %s\n", err)
-			os.Exit(1)
-		}
+				userZone, err := time.LoadLocation(tz)
+				if err != nil {
+					fmt.Println(err)
+					os.Exit(1)
+				}
 
-		t := utc.In(userZone)
-		if yes := sleepHours(t); yes {
-			// dedupe incidents that happen on the same day/hour for a single incident
-			dupeKey := fmt.Sprintf("%v%v%v", i.LastStatusChangeBy.ID, t.YearDay(), t.Hour())
-			if _, ok := dedupe[dupeKey]; !ok {
-				dedupe[dupeKey] = true
-				_, week := t.ISOWeek()
+				var utc time.Time
+				if utc, err = time.Parse(time.RFC3339, i.CreatedAt); err != nil {
+					fmt.Printf("bad parse: %s\n", err)
+					os.Exit(1)
+				}
 
-				ids := incidentResponders(i.ID)
-				for _, v := range ids {
-					if !isService(v) {
-						name, _ := getUserName(v)
+				t := utc.In(userZone)
+				if yes := sleepHours(t); yes {
+					// dedupe incidents that happen on the same day/hour for a single incident
+					dupeKey := fmt.Sprintf("%v%v%v", i.LastStatusChangeBy.ID, t.YearDay(), t.Hour())
+					if _, ok := dedupe[dupeKey]; !ok {
+						dedupe[dupeKey] = true
+						_, week := t.ISOWeek()
 
 						key := fmt.Sprintf("%v%v", name, week)
 						sleepPeople[key] += 1
 						fmt.Println()
-						fmt.Println("page time: ", t)
+						fmt.Println("page originated at: ", t)
 						fmt.Printf("sleep interruption: %s %v \n", name, i.Summary)
 
 						// debug
@@ -197,23 +205,19 @@ func listIncidents() {
 
 						sleepHourAlerts[t.Month().String()] += 1
 					}
+				} else if no := businessHours(t); no {
+					dupeKey := fmt.Sprintf("%v%v%v", i.LastStatusChangeBy.ID, t.YearDay(), t.Hour())
+					if _, ok := dedupe[dupeKey]; !ok {
+						dedupe[dupeKey] = true
+						offHourAlerts[t.Month().String()] += 1
+					}
 				}
-			}
-		} else if no := businessHours(t); no {
-			dupeKey := fmt.Sprintf("%v%v%v", i.LastStatusChangeBy.ID, t.YearDay(), t.Hour())
-			if _, ok := dedupe[dupeKey]; !ok {
-				dedupe[dupeKey] = true
+			} else {
+				fmt.Println("service name: ", getServiceName(v))
 			}
 
-			ids := incidentResponders(i.ID)
-			for _, v := range ids {
-				if !isService(v) {
-					offHourAlerts[t.Month().String()] += 1
-				}
-			}
+			// alertsForMonth[t.Month().String()] += 1
 		}
-
-		alertsForMonth[t.Month().String()] += 1
 	}
 
 	fmt.Printf("Total Pages for all teams: %v\n", len(incidents))
@@ -246,7 +250,7 @@ func getUserTimeZone(id string) (string, bool) {
 	return resp.Timezone, true
 }
 
-func getUserName(id string) (string, string) {
+func getUserName(id string) string {
 	ctx := context.Background()
 	resp, err := client.GetUserWithContext(ctx, id, pagerduty.GetUserOptions{})
 
@@ -259,14 +263,37 @@ func getUserName(id string) (string, string) {
 		}
 
 		if aerr.NotFound() {
-			return "unknown", ""
+			return id
 		} else {
 			fmt.Println("unknown status code when getting username:", aerr.StatusCode)
 			os.Exit(1)
 		}
 	}
 
-	return resp.Name, resp.Email
+	return resp.Name
+}
+
+func getServiceName(id string) string {
+	ctx := context.Background()
+	resp, err := client.GetServiceWithContext(ctx, id, &pagerduty.GetServiceOptions{})
+
+	var aerr pagerduty.APIError
+
+	if errors.As(err, &aerr) {
+		if aerr.RateLimited() {
+			fmt.Println("rate limited")
+			os.Exit(1)
+		}
+
+		if aerr.NotFound() {
+			return id
+		} else {
+			fmt.Println("unknown status code when getting username:", aerr.StatusCode)
+			os.Exit(1)
+		}
+	}
+
+	return resp.Name
 }
 
 func isService(id string) bool {
