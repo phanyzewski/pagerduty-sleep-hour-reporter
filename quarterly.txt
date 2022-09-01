@@ -1,0 +1,99 @@
+//
+// 2020Q1
+//
+// Since:     "2020-01-01T00:00:00-05:00",
+// Until:     "2020-04-01T00:00:00-05:00",
+//
+// Total Pages for all teams: 988
+// Total Sleep Hour Alerts for all teams: map[February:58 January:59 March:32]
+// Total Off Hour Alerts for all teams: map[February:8 January:9 March:6]
+//
+
+//
+// 2020Q2
+//
+// Since:     "2020-04-01T00:00:00-05:00",
+// Until:     "2020-07-01T00:00:00-05:00",
+//
+// Total Pages for all teams: 507
+// Total Sleep Hour Alerts for all teams: map[April:39 June:37 May:20]
+// Total Off Hour Alerts for all teams: map[April:15 June:30 May:6]
+
+//
+// 2020Q3
+//
+// Since:     "2020-07-01T00:00:00-05:00",
+// Until:     "2020-10-01T00:00:00-05:00",
+//
+// Total Pages for all teams: 355
+// Total Sleep Hour Alerts for all teams: map[August:35 July:24 September:20]
+// Total Off Hour Alerts for all teams: map[August:1 July:6 September:3]
+
+//
+// 2020Q4
+//
+// Since:     "2020-10-01T00:00:00-05:00",
+// Until:     "2021-01-01T00:00:00-05:00",
+//
+// Total Pages for all teams: 164
+// Total Sleep Hour Alerts for all teams: map[December:1 November:17 October:37 September:1]
+// Total Off Hour Alerts for all teams: map[December:1 November:2 October:7]
+
+//
+// 2021Q1
+// Since:     "2021-01-01T00:00:00-05:00",
+// Until:     "2021-04-01T00:00:00-05:00",
+//
+// Total Pages for all teams: 183
+// Total Sleep Hour Alerts for all teams: map[February:1 January:13 March:21]
+// Total Off Hour Alerts for all teams: map[February:7 January:8 March:3]
+
+//
+// 2021Q2
+// Since:     "2021-04-01T00:00:00-05:00",
+// Until:     "2021-07-01T00:00:00-05:00",
+//
+// Total Pages for all teams: 166
+// Total Sleep Hour Alerts for all teams: map[April:19 June:3 May:6]
+// Total Off Hour Alerts for all teams: map[April:2 June:4]
+//
+
+//
+// 2021Q3
+// Since:     "2021-07-01T00:00:00-05:00",
+// Until:     "2021-10-01T00:00:00-05:00",
+//
+// Total Pages for all teams: 489
+// Total Sleep Hour Alerts for all teams: map[August:25 July:28 September:12]
+// Total Off Hour Alerts for all teams: map[August:2 July:7 September:8]
+//
+
+//
+// 2021Q4
+// Since:     "2021-10-01T00:00:00-05:00",
+// Until:     "2022-01-01T00:00:00-05:00",
+//
+// Total Pages for all teams: 228
+// Total Sleep Hour Alerts for all teams: map[December:10 November:5 October:10]
+// Total Off Hour Alerts for all teams: map[December:4 November:1 October:4]
+//
+
+//
+// 2022Q1
+// Since:     "2022-01-01T00:00:00-05:00",
+// Until:     "2022-04-01T00:00:00-05:00",
+//
+// Total Pages for all teams: 256
+// Total Sleep Hour Alerts for all teams: map[February:22 January:6 March:18]
+// Total Off Hour Alerts for all teams: map[February:5 January:4 March:2]
+//
+
+//
+// 2022Q2
+// Since:     "2022-04-01T00:00:00-05:00",
+// Until:     "2022-07-01T00:00:00-05:00",
+//
+// Total Pages for all teams: 427
+// Total Sleep Hour Alerts for all teams: map[April:15 June:17 May:27]
+// Total Off Hour Alerts for all teams: map[April:3 June:29 May:13]
+//

@@ -1,0 +1,39 @@
+// Jan 2022
+// Total Pages for all teams: 105
+// Total Sleep Hour Alerts for all teams: map[January:6]
+// Total Off Hour Alerts for all teams: map[January:3]
+
+// Febuary 2022
+// Total Pages for all teams: 69
+// Total Sleep Hour Alerts for all teams: map[February:22]
+// Total Off Hour Alerts for all teams: map[February:4]
+
+// March
+// Total Pages for all teams: 82
+// Total Sleep Hour Alerts for all teams: map[March:18]
+// Total Off Hour Alerts for all teams: map[March:1]
+
+// April
+// Total Pages for all teams: 118
+// Total Sleep Hour Alerts for all teams: map[April:15]
+// Total Off Hour Alerts for all teams: map[April:3]
+
+// May
+// Total Pages for all teams: 223
+// Total Sleep Hour Alerts for all teams: map[May:27]
+// Total Off Hour Alerts for all teams: map[May:11]
+
+// June 2022
+// Total Pages for all teams: 86
+// Total Sleep Hour Alerts for all teams: map[June:17]
+// Total Off Hour Alerts for all teams: map[June:12]
+
+// july 2022
+// Total Pages for all teams: 47
+// Total Sleep Hour Alerts for all teams: map[July:2]
+// Total Off Hour Alerts for all teams: map[July:3]
+
+// August 2022
+// Total Pages for all teams: 85
+// Total Sleep Hour Alerts for all teams: map[August:5]
+// Total Off Hour Alerts for all teams: map[August:8]
