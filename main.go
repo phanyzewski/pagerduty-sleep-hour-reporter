@@ -10,15 +10,6 @@ import (
 	"github.com/PagerDuty/go-pagerduty"
 )
 
-// June 2022
-// Total Pages for all teams: 86
-// Total Sleep Hour Alerts for all teams: map[June:17]
-// Total Off Hour Alerts for all teams: map[June:12]
-
-// july 2022
-// Total Pages for all teams: 47
-// Total Sleep Hour Alerts for all teams: map[July:2]
-// Total Off Hour Alerts for all teams: map[July:3]
 var client *pagerduty.Client
 
 func main() {
@@ -46,8 +37,8 @@ func listIncidentResponse(offset int) (*pagerduty.ListIncidentsResponse, error) 
 	resp, err := client.ListIncidentsWithContext(ctx, pagerduty.ListIncidentsOptions{
 		Limit:     100,
 		Offset:    uint(offset),
-		Since:     "2020-01-01T00:00:00-05:00",
-		Until:     "2020-04-01T00:00:00-05:00",
+		Since:     "2022-07-01T00:00:00-05:00",
+		Until:     "2022-08-01T00:00:00-05:00",
 		Urgencies: []string{"high"},
 		// dev on-call https://teamsnap.pagerduty.com/teams/PTBNXW0/users
 		// infra on-call https://teamsnap.pagerduty.com/teams/PTV792K/users
@@ -145,7 +136,7 @@ func listIncidents() {
 	sleepHourAlerts := map[string]int{}
 	// alertsForMonth := map[string]int{}
 	sleepPeople := map[string]int{}
-	dedupe := map[string]bool{}
+	// dedupe := map[string]bool{}
 	for _, i := range incidents {
 		// tz, ok := getUserTimeZone(i.LastStatusChangeBy.ID)
 		// assign a default timezone for API integrations, bots and unregistered users
@@ -180,37 +171,37 @@ func listIncidents() {
 				t := utc.In(userZone)
 				if yes := sleepHours(t); yes {
 					// dedupe incidents that happen on the same day/hour for a single incident
-					dupeKey := fmt.Sprintf("%v%v%v", i.LastStatusChangeBy.ID, t.YearDay(), t.Hour())
-					if _, ok := dedupe[dupeKey]; !ok {
-						dedupe[dupeKey] = true
-						_, week := t.ISOWeek()
+					// dupeKey := fmt.Sprintf("%v%v%v", i.LastStatusChangeBy.ID, t.YearDay(), t.Hour())
+					// if _, ok := dedupe[dupeKey]; !ok {
+					// 	dedupe[dupeKey] = true
+					_, week := t.ISOWeek()
 
-						key := fmt.Sprintf("%v%v", name, week)
-						sleepPeople[key] += 1
-						fmt.Println()
-						fmt.Println("page originated at: ", t)
-						fmt.Printf("sleep interruption: %s %v \n", name, i.Summary)
+					key := fmt.Sprintf("%v%v", name, week)
+					sleepPeople[key] += 1
+					fmt.Println()
+					fmt.Println("page originated at: ", t)
+					fmt.Printf("sleep interruption: %s %v \n", name, i.Summary)
 
-						// debug
-						// fmt.Println()
-						// fmt.Println("Parsed time: ", t)
-						// fmt.Printf("Initial Responder: %v\n", i.FirstTriggerLogEntry)
-						// fmt.Printf("Final Responder: %v\n", i.LastStatusChangeBy.Summary)
-						// fmt.Printf("Incident ID: %v\n", i.ID)
-						// fmt.Printf("Sleeping Hour Alert Detected!: %s\n", i.Description)
+					// debug
+					// fmt.Println()
+					// fmt.Println("Parsed time: ", t)
+					// fmt.Printf("Initial Responder: %v\n", i.FirstTriggerLogEntry)
+					// fmt.Printf("Final Responder: %v\n", i.LastStatusChangeBy.Summary)
+					// fmt.Printf("Incident ID: %v\n", i.ID)
+					// fmt.Printf("Sleeping Hour Alert Detected!: %s\n", i.Description)
 
-						if sleepPeople[key] > 1 {
-							fmt.Printf("%s: Sleep interruption SLO violation week: %v Number of interruptions: %v\n", name, week, sleepPeople[key])
-						}
-
-						sleepHourAlerts[t.Month().String()] += 1
+					if sleepPeople[key] > 1 {
+						fmt.Printf("%s: Sleep interruption SLO violation week: %v Number of interruptions: %v\n", name, week, sleepPeople[key])
 					}
+
+					sleepHourAlerts[t.Month().String()] += 1
+					// }
 				} else if no := businessHours(t); no {
-					dupeKey := fmt.Sprintf("%v%v%v", i.LastStatusChangeBy.ID, t.YearDay(), t.Hour())
-					if _, ok := dedupe[dupeKey]; !ok {
-						dedupe[dupeKey] = true
-						offHourAlerts[t.Month().String()] += 1
-					}
+					// dupeKey := fmt.Sprintf("%v%v%v", i.LastStatusChangeBy.ID, t.YearDay(), t.Hour())
+					// if _, ok := dedupe[dupeKey]; !ok {
+					// dedupe[dupeKey] = true
+					offHourAlerts[t.Month().String()] += 1
+					// }
 				}
 			} else {
 				fmt.Println("service name: ", getServiceName(v))
