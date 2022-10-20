@@ -37,3 +37,8 @@
 // Total Pages for all teams: 85
 // Total Sleep Hour Alerts for all teams: map[August:5]
 // Total Off Hour Alerts for all teams: map[August:8]
+
+// September 2022
+// Total Pages for all teams: 149
+// Total Sleep Hour Alerts for all teams: map[September:19]
+// Total Off Hour Alerts for all teams: map[September:53]

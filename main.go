@@ -13,7 +13,6 @@ import (
 var client *pagerduty.Client
 
 func main() {
-	// data := pagerduty.AnalyticsData{}
 	token := os.Getenv("PAGERDUTY_API_TOKEN")
 	if len(token) < 1 {
 		fmt.Println("env PAGERDUTY_API_TOKEN is required")
@@ -37,8 +36,8 @@ func listIncidentResponse(offset int) (*pagerduty.ListIncidentsResponse, error) 
 	resp, err := client.ListIncidentsWithContext(ctx, pagerduty.ListIncidentsOptions{
 		Limit:     100,
 		Offset:    uint(offset),
-		Since:     "2022-07-01T00:00:00-05:00",
-		Until:     "2022-08-01T00:00:00-05:00",
+		Since:     "2022-09-01T00:00:00-05:00",
+		Until:     "2022-10-01T00:00:00-05:00",
 		Urgencies: []string{"high"},
 		// dev on-call https://teamsnap.pagerduty.com/teams/PTBNXW0/users
 		// infra on-call https://teamsnap.pagerduty.com/teams/PTV792K/users
@@ -59,7 +58,13 @@ func incidentResponders(id string) []string {
 		}
 	}
 
-	i, err := client.ListIncidentLogEntriesWithContext(context.Background(), id, pagerduty.ListIncidentLogEntriesOptions{Limit: 100, Offset: 0, Total: true})
+	i, err := client.ListIncidentLogEntriesWithContext(context.Background(), id,
+		pagerduty.ListIncidentLogEntriesOptions{
+			Limit:  100,
+			Offset: 0,
+			Total:  true,
+		},
+	)
 	var aerr pagerduty.APIError
 
 	// handle api errors
@@ -73,7 +78,6 @@ func incidentResponders(id string) []string {
 			fmt.Printf("missing log entries for: %s\n", id)
 		} else {
 			fmt.Printf("unknown status code ListIncidentLogEntriesWithContext: %v, %v\n", id, aerr.StatusCode)
-			// os.Exit(1)
 			return []string{}
 		}
 	}
@@ -121,9 +125,6 @@ func listIncidents() {
 		}
 
 		incidents = append(incidents, i.Incidents...)
-		// fmt.Println("current offset: ", offset)
-		// fmt.Println("current incidents: ", len(i.Incidents))
-		// fmt.Println("total incidents: ", len(incidents))
 
 		if !i.More {
 			more = false
@@ -132,27 +133,23 @@ func listIncidents() {
 		offset += 100
 	}
 
-	offHourAlerts := map[string]int{}
-	sleepHourAlerts := map[string]int{}
-	// alertsForMonth := map[string]int{}
+	report := &alertReport{}
 	sleepPeople := map[string]int{}
-	// dedupe := map[string]bool{}
 	for _, i := range incidents {
-		// tz, ok := getUserTimeZone(i.LastStatusChangeBy.ID)
-		// assign a default timezone for API integrations, bots and unregistered users
-
+		chars := min(40, len(i.Summary))
+		alert := alert{id: i.ID, desc: i.Summary[:chars], responders: map[string]responder{}}
 		ids := incidentResponders(i.ID)
 		if len(ids) < 1 {
 			ids = []string{i.LastStatusChangeBy.ID}
 		}
 
 		for _, v := range ids {
+			// don't count stats for bots
 			if !isService(v) {
 				name := getUserName(v)
-				// fmt.Println("responder: ", name)
 				tz, ok := getUserTimeZone(v)
+				// if a user has no time zone use MT
 				if !ok {
-					// fmt.Printf("No time zone for bot: %s, using America/Denver\n", name)
 					tz = "America/Denver"
 				}
 
@@ -169,53 +166,43 @@ func listIncidents() {
 				}
 
 				t := utc.In(userZone)
-				if yes := sleepHours(t); yes {
-					// dedupe incidents that happen on the same day/hour for a single incident
-					// dupeKey := fmt.Sprintf("%v%v%v", i.LastStatusChangeBy.ID, t.YearDay(), t.Hour())
-					// if _, ok := dedupe[dupeKey]; !ok {
-					// 	dedupe[dupeKey] = true
-					_, week := t.ISOWeek()
 
+				var person responder
+				if _, ok := alert.responders[name]; !ok {
+					person = responder{name: name}
+				} else {
+					person = alert.responders[name]
+				}
+
+				if yes := isSleepHours(t); yes {
+					person.sleepHour += 1
+
+					// stub in the beginning on sleep week SLOs
+					_, week := t.ISOWeek()
 					key := fmt.Sprintf("%v%v", name, week)
 					sleepPeople[key] += 1
-					fmt.Println()
-					fmt.Println("page originated at: ", t)
-					fmt.Printf("sleep interruption: %s %v \n", name, i.Summary)
-
-					// debug
-					// fmt.Println()
-					// fmt.Println("Parsed time: ", t)
-					// fmt.Printf("Initial Responder: %v\n", i.FirstTriggerLogEntry)
-					// fmt.Printf("Final Responder: %v\n", i.LastStatusChangeBy.Summary)
-					// fmt.Printf("Incident ID: %v\n", i.ID)
-					// fmt.Printf("Sleeping Hour Alert Detected!: %s\n", i.Description)
 
 					if sleepPeople[key] > 1 {
 						fmt.Printf("%s: Sleep interruption SLO violation week: %v Number of interruptions: %v\n", name, week, sleepPeople[key])
 					}
 
-					sleepHourAlerts[t.Month().String()] += 1
-					// }
-				} else if no := businessHours(t); no {
-					// dupeKey := fmt.Sprintf("%v%v%v", i.LastStatusChangeBy.ID, t.YearDay(), t.Hour())
-					// if _, ok := dedupe[dupeKey]; !ok {
-					// dedupe[dupeKey] = true
-					offHourAlerts[t.Month().String()] += 1
-					// }
+					report.sleepHourTotal += 1
+				} else if no := isBusinessHours(t); no {
+					person.offHour += 1
+					report.offHourTotal += 1
 				}
+
+				alert.responders[name] = person
 			} else {
 				fmt.Println("service name: ", getServiceName(v))
 			}
-
-			// alertsForMonth[t.Month().String()] += 1
 		}
+
+		report.alerts = append(report.alerts, alert)
 	}
 
-	fmt.Printf("Total Pages for all teams: %v\n", len(incidents))
-	fmt.Printf("Total Sleep Hour Alerts for all teams: %v\n", sleepHourAlerts)
-	fmt.Printf("Total Off Hour Alerts for all teams: %v\n", offHourAlerts)
-	// fmt.Printf("Total Sleep Hour Alerts for infra: %v\n", infraSleepHourAlerts)
-	// fmt.Printf("Total Sleep Hour Alerts for dev: %v\n", devSleepHourAlerts)
+	report.alertTotal = len(incidents)
+	report.emit()
 }
 
 func getUserTimeZone(id string) (string, bool) {
@@ -310,7 +297,7 @@ func isService(id string) bool {
 	return true
 }
 
-func sleepHours(dt time.Time) bool {
+func isSleepHours(dt time.Time) bool {
 	// - Sleep Hours: 10pm-8am every day, based on the user’s time zone.
 	eod := 21
 	bod := 8
@@ -321,7 +308,7 @@ func sleepHours(dt time.Time) bool {
 	return false
 }
 
-func businessHours(dt time.Time) bool {
+func isBusinessHours(dt time.Time) bool {
 	// - Business Hours: 8am-6pm Mon-Fri, based on the user’s time zone.
 	bod := 8
 	eod := 19
