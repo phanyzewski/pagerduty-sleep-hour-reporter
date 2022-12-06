@@ -80,14 +80,28 @@ func (r *alertReport) offHourAlertsByResponder() map[string]int {
 	return res
 }
 
-func (r *alertReport) emit() {
+func (r *alertReport) alertsByResponder() map[string]int {
+	res := map[string]int{}
+	for _, a := range r.alerts {
+		for _, p := range a.responders {
+			if _, ok := res[p.name]; !ok {
+				res[p.name] = 1
+			} else {
+				res[p.name] += 1
+			}
+		}
+	}
 
+	return res
+}
+
+func (r *alertReport) emit() {
 	tw := tablewriter.NewWriter(os.Stdout)
 	tw.SetHeader([]string{"Alert", "Description", "Responder", "Off Hour Alert", "Sleep Hour Alert"})
 	tw.SetFooter([]string{"", "", fmt.Sprintf("Alerts: %v", r.alertTotal), fmt.Sprintf("Off Hours: %v", r.offHourTotal), fmt.Sprintf("Sleep Hours: %v", r.sleepHourTotal)})
 	for _, a := range r.alerts {
 		for _, v := range a.responders {
-			if v.offHour > 0 || v.sleepHour > 0 {
+			if v.sleepHour > 0 {
 				tw.Append([]string{a.id, a.desc, v.name, fmt.Sprint(v.offHour), fmt.Sprint(v.sleepHour)})
 			}
 		}
@@ -99,14 +113,13 @@ func (r *alertReport) emit() {
 		stw.Append([]string{k, fmt.Sprint(v)})
 	}
 
-	fmt.Println("Off Hour Alerts")
 	otw := tablewriter.NewWriter(os.Stdout)
-	otw.SetHeader([]string{"Name", "Sleep Hour Alerts"})
+	otw.SetHeader([]string{"Name", "Off Hour Alerts"})
 	for k, v := range r.offHourAlertsByResponder() {
-		stw.Append([]string{k, fmt.Sprint(v)})
+		otw.Append([]string{k, fmt.Sprint(v)})
 	}
 
-	fmt.Println("All Alerts")
+	fmt.Printf("All Alerts from: %v to: %v\n", r.startDay, r.endDay)
 	tw.Render()
 	fmt.Println("Off Hour Alerts")
 	otw.Render()
