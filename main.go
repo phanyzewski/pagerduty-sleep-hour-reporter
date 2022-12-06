@@ -36,8 +36,8 @@ func listIncidentResponse(offset int) (*pagerduty.ListIncidentsResponse, error) 
 	resp, err := client.ListIncidentsWithContext(ctx, pagerduty.ListIncidentsOptions{
 		Limit:     100,
 		Offset:    uint(offset),
-		Since:     "2022-09-01T00:00:00-05:00",
-		Until:     "2022-10-01T00:00:00-05:00",
+		Since:     "2022-11-01T00:00:00-05:00",
+		Until:     "2022-12-01T00:00:00-05:00",
 		Urgencies: []string{"high"},
 		// dev on-call https://teamsnap.pagerduty.com/teams/PTBNXW0/users
 		// infra on-call https://teamsnap.pagerduty.com/teams/PTV792K/users
@@ -136,7 +136,7 @@ func listIncidents() {
 	report := &alertReport{}
 	sleepPeople := map[string]int{}
 	for _, i := range incidents {
-		chars := min(40, len(i.Summary))
+		chars := min(64, len(i.Summary))
 		alert := alert{id: i.ID, desc: i.Summary[:chars], responders: map[string]responder{}}
 		ids := incidentResponders(i.ID)
 		if len(ids) < 1 {
@@ -187,7 +187,7 @@ func listIncidents() {
 					}
 
 					report.sleepHourTotal += 1
-				} else if no := isBusinessHours(t); no {
+				} else if yes := isOffHours(t); yes {
 					person.offHour += 1
 					report.offHourTotal += 1
 				}
@@ -308,19 +308,21 @@ func isSleepHours(dt time.Time) bool {
 	return false
 }
 
-func isBusinessHours(dt time.Time) bool {
+func isOffHours(dt time.Time) bool {
 	// - Business Hours: 8am-6pm Mon-Fri, based on the user’s time zone.
 	bod := 8
 	eod := 19
 	// check day of week
 	if dt.Weekday() == time.Saturday || dt.Weekday() == time.Sunday {
-		return false
-	}
-
-	// check hour of day
-	if dt.Hour() >= bod && eod < dt.Hour() {
 		return true
 	}
 
-	return false
+	// check hour of day
+	if dt.Hour() >= bod && dt.Hour() < eod {
+		// fmt.Printf("its business time %v\n", dt.Hour())
+		return false
+	}
+
+	fmt.Printf("its not business time %v\n", dt.Hour())
+	return true
 }
