@@ -3,15 +3,11 @@ package main
 import (
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/olekukonko/tablewriter"
 )
 
 type alertReport struct {
-	startDay time.Time
-	endDay   time.Time
-
 	alerts         []alert
 	alertTotal     int
 	offHourTotal   int
@@ -22,11 +18,6 @@ type responder struct {
 	name      string
 	offHour   int
 	sleepHour int
-
-	// these fields should be calculated
-	// alertTotal     int
-	// offHourTotal   int
-	// sleepHourTotal int
 }
 
 type alert struct {
@@ -42,63 +33,10 @@ func min(x, y int) int {
 	return y
 }
 
-func (r *alertReport) sleepHourAlertsByResponder() map[string]int {
-	res := map[string]int{}
-	for _, a := range r.alerts {
-		for _, p := range a.responders {
-			if p.sleepHour < 1 {
-				continue
-			}
-
-			if _, ok := res[p.name]; !ok {
-				res[p.name] = 1
-			} else {
-				res[p.name] += 1
-			}
-		}
-	}
-
-	return res
-}
-
-func (r *alertReport) offHourAlertsByResponder() map[string]int {
-	res := map[string]int{}
-	for _, a := range r.alerts {
-		for _, p := range a.responders {
-			if p.offHour < 1 {
-				continue
-			}
-
-			if _, ok := res[p.name]; !ok {
-				res[p.name] = 1
-			} else {
-				res[p.name] += 1
-			}
-		}
-	}
-
-	return res
-}
-
-func (r *alertReport) alertsByResponder() map[string]int {
-	res := map[string]int{}
-	for _, a := range r.alerts {
-		for _, p := range a.responders {
-			if _, ok := res[p.name]; !ok {
-				res[p.name] = 1
-			} else {
-				res[p.name] += 1
-			}
-		}
-	}
-
-	return res
-}
-
 func (r *alertReport) emit() {
 	tw := tablewriter.NewWriter(os.Stdout)
 	tw.SetHeader([]string{"Alert", "Description", "Responder", "Off Hour Alert", "Sleep Hour Alert"})
-	tw.SetFooter([]string{"", "", fmt.Sprintf("Alerts: %v", r.alertTotal), fmt.Sprintf("Off Hours: %v", r.offHourTotal), fmt.Sprintf("Sleep Hours: %v", r.sleepHourTotal)})
+	tw.SetFooter([]string{"", "", fmt.Sprintf("Sleep Hours: %v", r.sleepHourTotal), fmt.Sprintf("Off Hours: %v", r.offHourTotal), fmt.Sprintf("Alerts: %v", r.alertTotal)})
 	for _, a := range r.alerts {
 		for _, v := range a.responders {
 			if v.sleepHour > 0 {
@@ -107,22 +45,6 @@ func (r *alertReport) emit() {
 		}
 	}
 
-	stw := tablewriter.NewWriter(os.Stdout)
-	stw.SetHeader([]string{"Name", "Sleep Hour Alerts"})
-	for k, v := range r.sleepHourAlertsByResponder() {
-		stw.Append([]string{k, fmt.Sprint(v)})
-	}
-
-	otw := tablewriter.NewWriter(os.Stdout)
-	otw.SetHeader([]string{"Name", "Off Hour Alerts"})
-	for k, v := range r.offHourAlertsByResponder() {
-		otw.Append([]string{k, fmt.Sprint(v)})
-	}
-
-	fmt.Printf("All Alerts from: %v to: %v\n", r.startDay, r.endDay)
+	fmt.Printf("All Alerts from: %v to: %v\n", startMonth, endMonth)
 	tw.Render()
-	fmt.Println("Off Hour Alerts")
-	otw.Render()
-	fmt.Println("Sleep Hour Alerts")
-	stw.Render()
 }
