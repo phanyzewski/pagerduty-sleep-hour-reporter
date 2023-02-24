@@ -31,10 +31,10 @@ func main() {
 
 	var teams *string
 	setupFlags.Do(func() {
-		flag.StringVar(&startYear, "start-year", fmt.Sprintf("%v", time.Now().Year()), "scoped year for analytics")
-		flag.StringVar(&endYear, "end-year", fmt.Sprintf("%v", time.Now().Year()), "scoped year for analytics")
-		flag.StringVar(&startMonth, "start-month", fmt.Sprintf("%d", time.Now().Month()-1), "starting month")
-		flag.StringVar(&endMonth, "end-month", fmt.Sprintf("%d", time.Now().Month()), "ending month")
+		flag.StringVar(&startYear, "start-year", fmt.Sprintf("%v", time.Now().Year()), "starting numeric representation of year, eg 2022")
+		flag.StringVar(&endYear, "end-year", fmt.Sprintf("%v", time.Now().Year()), "ending numeric representation of year, eg 2023")
+		flag.StringVar(&startMonth, "start-month", fmt.Sprintf("%d", time.Now().Month()-1), "starting numeric representation of month, eg 12")
+		flag.StringVar(&endMonth, "end-month", fmt.Sprintf("%d", time.Now().Month()), "ending numeric representation of ending month, eg 03")
 		teams = flag.String("team-ids", "", "comma separated string of pager duty team ids")
 
 		flag.Parse()
