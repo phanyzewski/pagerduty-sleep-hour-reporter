@@ -17,8 +17,8 @@ func listIncidentResponse(offset int) (*pagerduty.ListIncidentsResponse, error) 
 	resp, err := client.ListIncidentsWithContext(ctx, pagerduty.ListIncidentsOptions{
 		Limit:     100,
 		Offset:    uint(offset),
-		Since:     fmt.Sprintf("%s-%s-01T00:00:00", startYear, "01"),
-		Until:     fmt.Sprintf("%s-%s-01T00:00:00", endYear, "02"),
+		Since:     fmt.Sprintf("%s-%s-01T00:00:00", startYear, startMonth),
+		Until:     fmt.Sprintf("%s-%s-01T00:00:00", endYear, endMonth),
 		Urgencies: []string{"high"},
 		TeamIDs:   teamIDs,
 
