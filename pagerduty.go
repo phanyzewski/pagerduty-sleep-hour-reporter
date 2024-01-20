@@ -9,10 +9,39 @@ import (
 	"github.com/PagerDuty/go-pagerduty"
 )
 
-var client *pagerduty.Client
+func incidents() []pagerduty.Incident {
+	offset := 0
+	incidents := []pagerduty.Incident{}
+	var aerr pagerduty.APIError
 
-// listIncidentResponse calls the pagerduty ListIncident API endpoint for a configurable time period
-func listIncidentResponse(offset int) (*pagerduty.ListIncidentsResponse, error) {
+	more := true
+	for more {
+		i, err := listIncidents(offset)
+
+		// handle api errors
+		if errors.As(err, &aerr) {
+			if aerr.RateLimited() {
+				fmt.Println("rate limited")
+				os.Exit(1)
+			}
+
+			fmt.Println("unknown status code:", aerr.StatusCode)
+			os.Exit(1)
+		}
+
+		incidents = append(incidents, i.Incidents...)
+
+		if !i.More {
+			more = false
+		}
+
+		offset += 100
+	}
+	return incidents
+}
+
+// listIncidents calls the pagerduty ListIncident API endpoint for a configurable time period
+func listIncidents(offset int) (*pagerduty.ListIncidentsResponse, error) {
 	ctx := context.Background()
 	resp, err := client.ListIncidentsWithContext(ctx, pagerduty.ListIncidentsOptions{
 		Limit:     100,
@@ -21,47 +50,43 @@ func listIncidentResponse(offset int) (*pagerduty.ListIncidentsResponse, error) 
 		Until:     fmt.Sprintf("%s-%s-01T00:00:00", endYear, endMonth),
 		Urgencies: []string{"high"},
 		TeamIDs:   teamIDs,
-
-		TimeZone: "UTC",
+		TimeZone:  "UTC",
 	})
 
 	return resp, err
 }
 
-// incidentResponders calls the Incident Log API endpoint and returns
-// a list of users who were paged
-func incidentResponders(id string) []string {
-	i, err := client.ListIncidentLogEntriesWithContext(context.Background(), id,
-		pagerduty.ListIncidentLogEntriesOptions{
-			Limit:  100,
-			Offset: 0,
-			Total:  true,
-		},
-	)
+func responders(id string) []string {
+	offset := 0
+	logEntries := []pagerduty.LogEntry{}
 	var aerr pagerduty.APIError
 
-	// handle api errors
-	if errors.As(err, &aerr) {
-		if aerr.RateLimited() {
-			fmt.Println("rate limited")
+	more := true
+	for more {
+		l, err := listIncidentLogEntries(offset, id)
+
+		// handle api errors
+		if errors.As(err, &aerr) {
+			if aerr.RateLimited() {
+				fmt.Println("rate limited")
+				os.Exit(1)
+			}
+
+			fmt.Println("unknown status code:", aerr.StatusCode)
 			os.Exit(1)
 		}
 
-		if aerr.NotFound() {
-			fmt.Printf("missing log entries for: %s\n", id)
-		} else {
-			fmt.Printf("unknown status code ListIncidentLogEntriesWithContext: %v, %v\n", id, aerr.StatusCode)
-			return []string{}
-		}
-	}
+		logEntries = append(logEntries, l.LogEntries...)
 
-	if i.Total > 100 {
-		fmt.Println("warn, more than 100 log entries for incident", id)
-		fmt.Println("count: ", i.Total)
+		if !l.More {
+			more = false
+		}
+
+		offset += 100
 	}
 
 	users := map[string]bool{}
-	for _, v := range i.LogEntries {
+	for _, v := range logEntries {
 		if v.User.ID != "" {
 			if _, ok := users[v.User.ID]; !ok {
 				users[v.User.ID] = true
@@ -75,6 +100,20 @@ func incidentResponders(id string) []string {
 	}
 
 	return ids
+}
+
+// listIncidentLogEntries calls the Incident Log API endpoint and returns
+func listIncidentLogEntries(offset int, id string) (*pagerduty.ListIncidentLogEntriesResponse, error) {
+	ctx := context.Background()
+	resp, err := client.ListIncidentLogEntriesWithContext(ctx, id, pagerduty.ListIncidentLogEntriesOptions{
+		Limit:    100,
+		Offset:   uint(offset),
+		Since:    fmt.Sprintf("%s-%s-01T00:00:00", startYear, startMonth),
+		Until:    fmt.Sprintf("%s-%s-01T00:00:00", endYear, endMonth),
+		TimeZone: "UTC",
+	})
+
+	return resp, err
 }
 
 // getUserTimeZone calls the PagerDuty Users Endpoint and returns a users timezone

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -20,6 +19,7 @@ var (
 	teamIDs    []string
 
 	setupFlags sync.Once
+	client     *pagerduty.Client
 )
 
 func main() {
@@ -41,46 +41,17 @@ func main() {
 	})
 
 	teamIDs = strings.Split(*teams, ",")
-
 	client = pagerduty.NewClient(token)
-
-	listIncidents()
+	generateSleepHourReport()
 }
 
-func listIncidents() {
-	offset := 0
-	incidents := []pagerduty.Incident{}
-	var aerr pagerduty.APIError
-
-	more := true
-	for more {
-		i, err := listIncidentResponse(offset)
-
-		// handle api errors
-		if errors.As(err, &aerr) {
-			if aerr.RateLimited() {
-				fmt.Println("rate limited")
-				os.Exit(1)
-			}
-
-			fmt.Println("unknown status code:", aerr.StatusCode)
-			os.Exit(1)
-		}
-
-		incidents = append(incidents, i.Incidents...)
-
-		if !i.More {
-			more = false
-		}
-
-		offset += 100
-	}
-
+func generateSleepHourReport() {
+	incidents := incidents()
 	report := &alertReport{}
 	for _, i := range incidents {
 		chars := min(64, len(i.Summary))
 		alert := alert{id: i.ID, desc: i.Summary[:chars], responders: map[string]responder{}}
-		ids := incidentResponders(i.ID)
+		ids := responders(i.ID)
 		if len(ids) < 1 {
 			ids = []string{i.LastStatusChangeBy.ID}
 		}
