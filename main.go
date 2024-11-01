@@ -48,9 +48,17 @@ func main() {
 func generateSleepHourReport() {
 	incidents := incidents()
 	report := &alertReport{}
+
 	for _, i := range incidents {
-		chars := min(64, len(i.Summary))
-		alert := alert{id: i.ID, desc: i.Summary[:chars], responders: map[string]responder{}}
+		policy := getIncidentEscalationPolicy(i.EscalationPolicy.ID)
+		chars := min(128, len(i.Summary))
+		alert := alert{
+			ID:         i.ID,
+			Desc:       i.Summary[:chars],
+			Responders: map[string]responder{},
+			URL:        i.HTMLURL,
+		}
+
 		ids := responders(i.ID)
 		if len(ids) < 1 {
 			ids = []string{i.LastStatusChangeBy.ID}
@@ -80,26 +88,27 @@ func generateSleepHourReport() {
 			t := utc.In(userZone)
 
 			var person responder
-			if _, ok := alert.responders[name]; !ok {
-				person = responder{name: name}
+			if _, ok := alert.Responders[name]; !ok {
+				person = responder{Name: name, EscalationPolicy: policy}
 			} else {
-				person = alert.responders[name]
+				person = alert.Responders[name]
 			}
 
 			if yes := isSleepHours(t); yes {
-				person.sleepHour += 1
-				report.sleepHourTotal += 1
+				person.SleepHour += 1
+				report.SleepHourTotal += 1
 			} else if yes := isOffHours(t); yes {
-				person.offHour += 1
-				report.offHourTotal += 1
+				person.OffHour += 1
+				report.OffHourTotal += 1
 			}
 
-			alert.responders[name] = person
+			alert.DateTime = t
+			alert.Responders[name] = person
 		}
 
-		report.alerts = append(report.alerts, alert)
+		report.Alerts = append(report.Alerts, alert)
 	}
 
-	report.alertTotal = len(incidents)
-	report.emit()
+	report.AlertTotal = len(incidents)
+	report.emitCsv()
 }

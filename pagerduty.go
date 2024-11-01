@@ -87,7 +87,8 @@ func responders(id string) []string {
 
 	users := map[string]bool{}
 	for _, v := range logEntries {
-		if v.User.ID != "" {
+		// TODO: remove this hardcoded (bot) user id
+		if v.User.ID != "" && v.User.ID != "PJX59OJ" {
 			if _, ok := users[v.User.ID]; !ok {
 				users[v.User.ID] = true
 			}
@@ -162,4 +163,56 @@ func getUserName(id string) string {
 	}
 
 	return resp.Name
+}
+
+// getUserTeam calls the PagerDuty Users API endpoint and returns the team9s) associated with a user
+// func getUserTeam(id string) []string {
+// 	ctx := context.Background()
+// 	resp, err := client.GetUserWithContext(ctx, id, pagerduty.GetUserOptions{})
+
+// 	var aerr pagerduty.APIError
+
+// 	if errors.As(err, &aerr) {
+// 		if aerr.RateLimited() {
+// 			fmt.Println("rate limited")
+// 			os.Exit(1)
+// 		}
+
+// 		if aerr.NotFound() {
+// 			return nil
+// 		} else {
+// 			fmt.Println("unknown status code when getting username:", aerr.StatusCode)
+// 			os.Exit(1)
+// 		}
+// 	}
+// 	teams := []string{}
+
+// 	for _, t := range resp.Teams {
+// 		teams = append(teams, t.Summary)
+// 	}
+// 	return teams
+// }
+
+// getIncidentEscalationPolicy calls the PagerDuty Users API endpoint and returns the team9s) associated with a user
+func getIncidentEscalationPolicy(id string) string {
+	ctx := context.Background()
+	resp, err := client.GetEscalationPolicyWithContext(ctx, id, &pagerduty.GetEscalationPolicyOptions{})
+
+	var aerr pagerduty.APIError
+
+	if errors.As(err, &aerr) {
+		if aerr.RateLimited() {
+			fmt.Println("rate limited")
+			os.Exit(1)
+		}
+
+		if aerr.NotFound() {
+			return ""
+		} else {
+			fmt.Println("unknown status code when getting username:", aerr.StatusCode)
+			os.Exit(1)
+		}
+	}
+
+	return resp.Summary
 }
